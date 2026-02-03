@@ -82,3 +82,30 @@ while True:
         last_update_id = u["update_id"]
 
     time.sleep(2)
+    def ask_groq(user_text):
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "model": "llama3-8b-8192",
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_text}
+        ],
+        "temperature": 0.4
+    }
+
+    r = requests.post(GROQ_URL, headers=headers, json=payload, timeout=30)
+
+    # ---- DEBUG SAFETY ----
+    if r.status_code != 200:
+        return f"Groq error {r.status_code}: {r.text}"
+
+    data = r.json()
+
+    if "choices" not in data:
+        return f"Unexpected Groq response: {data}"
+
+    return data["choices"][0]["message"]["content"]
