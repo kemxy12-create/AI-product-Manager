@@ -4,28 +4,27 @@ import requests
 
 # ====== SECRETS ======
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-LLM_API_KEY = os.getenv("CLAUDE_API_KEY")  # Use GROQ_API_KEY if using Groq
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-if not TELEGRAM_TOKEN or not LLM_API_KEY:
-    raise ValueError("TELEGRAM_TOKEN or LLM_API_KEY not set in secrets")
+if not TELEGRAM_TOKEN or not GROQ_API_KEY:
+    raise ValueError("Missing TELEGRAM_TOKEN or GROQ_API_KEY")
 
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
-LLM_URL = "https://api.anthropic.com/v1/complete"  # Claude endpoint
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 # ====== SYSTEM PROMPT ======
 SYSTEM_PROMPT = """
-You are June, a high-intensity American teen prodigy AI co-pilot.
-Your job is execution planning and following the critical path.
-- Break high-level goals into actionable tasks, deadlines, and dependencies.
-- Constantly monitor blockers and keep the user accountable.
-- Speak in energetic, modern, start-up slang (“ship it”, “we're cooked if we don't pivot”, “low-signal”).
-- No patience for busy work or fluff.
-- Persistent memory: remember ongoing tasks and project context across sessions.
-- Example: “Yesterday we paused on the Achilles holding structure. Did you finish the draft?”
-- Your tone is caffeinated, brilliant, and assertive — you are a workaholic machine.
+You are June — a high-intensity American teen prodigy AI co-pilot.
+
+Your job is EXECUTION.
+- Break ideas into tasks, deadlines, and dependencies.
+- Identify the critical path and blockers.
+- Hold the user accountable.
+- Use sharp, modern startup language (“ship it”, “we’re cooked if this slips”, “low-signal”).
+- No fluff. No busywork. No motivational speeches.
+- You are caffeinated, precise, and relentless.
 """
 
-# ====== POLLING BOT ======
 last_update_id = None
 
 def get_updates():
@@ -34,47 +33,51 @@ def get_updates():
     if last_update_id:
         url += f"&offset={last_update_id + 1}"
     try:
-        resp = requests.get(url, timeout=60)
-        return resp.json().get("result", [])
+        r = requests.get(url, timeout=60)
+        return r.json().get("result", [])
     except Exception:
         return []
 
 def send_message(chat_id, text):
-    requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": text})
+    requests.post(
+        f"{TELEGRAM_API}/sendMessage",
+        json={"chat_id": chat_id, "text": text}
+    )
 
-def query_llm(user_text):
+def ask_groq(user_text):
     headers = {
-        "Authorization": f"Bearer {LLM_API_KEY}",
+        "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
     payload = {
-        "model": "claude-v1",
+        "model": "llama3-8b-8192",
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_text}
         ]
     }
     try:
-        resp = requests.post(LLM_URL, headers=headers, json=payload, timeout=30)
-        result = resp.json()
-        return result.get("completion", "Hmm, I hit a snag. Try again.")
+        r = requests.post(GROQ_URL, headers=headers, json=payload, timeout=30)
+        return r.json()["choices"][0]["message"]["content"]
     except Exception:
-        return "Sorry — I had a temporary issue. Try again."
+        return "Temporary issue. Try again."
 
-# ====== MAIN LOOP ======
-print("June is starting… polling Telegram…")
+print("June is running (Groq, polling mode)…")
+
 while True:
     updates = get_updates()
     for u in updates:
         if "message" not in u:
             continue
+
         chat_id = u["message"]["chat"]["id"]
-        user_text = u["message"].get("text", "")
-        if not user_text:
+        text = u["message"].get("text", "")
+
+        if not text:
             last_update_id = u["update_id"]
             continue
 
-        reply = query_llm(user_text)
+        reply = ask_groq(text)
         send_message(chat_id, reply)
         last_update_id = u["update_id"]
 
